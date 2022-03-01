@@ -1,5 +1,7 @@
 import http from "http";
-import WebSocket from "ws";
+// import WebSocket from "ws";
+import {Server} from "socket.io";
+import {instrument} from "@socket.io/admin-ui";
 import express from "express";
 
 const app = express();
@@ -20,11 +22,74 @@ app.get("/*", (req, res) => res.redirect("/"));
 const handleListen = () => console.log(`Listening on http://localhost:3000`);
 
 //app에 등록된 http서버에 acess
-const server = http.createServer(app);
+const httpserver = http.createServer(app);
+const io = new Server(httpserver, {
+  cors: {
+    origin: ["https://admin.socket.io"],
+    credentials: true,
+  },
+});
+
+instrument(io,{
+  auth:false,
+});
+
+function publicRooms(){
+  // const sids = io.sockets.adapter.sids;
+  // const rooms = io.sockets.adapter.rooms;
+  //위의 코드를 아래로 표현할 수 있음
+  //io.sockets.adapter 에서 sids, rooms를 가져옴
+  const {sockets: {adapter: {sids, rooms}}} = io;
+
+  const publicRooms = [];
+  rooms.forEach((_, key) => {
+    if(sids.get(key) === undefined){
+      publicRooms.push(key);
+    }
+  });
+  return publicRooms;
+}
+
+function countRoom(roomName){
+  return io.sockets.adapter.rooms.get(roomName)?.size;
+}
+
+io.on("connection", (socket)=>{
+  socket["nickname"] = "Anon";
+  //.onAny : 미들웨어
+  socket.onAny((event) =>{
+    console.log(`Socket Event: ${event}`);
+  });
+
+  socket.on("enter_room", (roomName, done) =>{
+    socket.join(roomName);
+    done();
+    //.to :  room에 참가하면 나를 제외한 모든 사람에게 프론트의 welcome 실행
+    socket.to(roomName).emit("welcome", socket.nickname, countRoom(roomName));
+    io.sockets.emit("room_change", publicRooms() );
+  });
+  
+  //클라이언트가 서버와 끊어지기 전에 실행
+  //클라이언트가 떠나기 직전임으로 멤버수 countRoom-1
+  socket.on("disconnecting", ()=>{
+    socket.rooms.forEach((room)=> socket.to(room).emit("bye", socket.nickname, countRoom(room) -1));
+  });
+  socket.on("disconnect", () =>{
+    io.sockets.emit("room_change", publicRooms() );
+  });
+
+  socket.on("new_message", (msg, room, done)=>{
+    socket.to(room).emit("new_message", `${socket.nickname}: ${msg}`);
+    done();
+  });
+
+  socket.on("nickname", (nickname )=> (socket["nickname"] = nickname));
+});
+
+/* 
 //http서버 위로 Websocket서버를 생성
 // http와 ws서버 둘다 처리가 가능하게 됨
-const wss = new WebSocket.Server({server});
-
+const wss = new WebSocket.Server({httpserver});
 
 //브라우저대응을 위한 가짜 데이터베이스 용
 const sockets = [];
@@ -56,8 +121,9 @@ wss.on("connection",  (socket) =>{
      
     //브라우저에 메시지 보내기
     // socket.send(msg.toString('utf8'));
-  });
-
+  }); 
 });
+  */
 
-server.listen(3000, handleListen);
+
+httpserver.listen(3000, handleListen);
