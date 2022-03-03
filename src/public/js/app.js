@@ -4,10 +4,106 @@ const welcome = document.querySelector("#welcome");
 const form = document.querySelector("form");
 const room = document.querySelector("#room");
 
+const myFace = document.getElementById("myFace");
+const muteBtn = document.getElementById("mute");
+const cameraBtn = document.getElementById("camera");
+const cameraSelect = document.getElementById("cameras");
+let myStream;
+
 //room 초기화면에서 숨기기
 room.hidden = true;
 let roomName ;
+let muted = false;
+let cameraOff = false;
 
+async function getCamera(){
+  try {
+    // 유저환경의 모든디바이스  enumerateDevices
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    //유저환경의 모든디바이스중  videoinput만 거르기
+    const cameras = devices.filter(device => device.kind === "videoinput");
+
+    const currentCamera = myStream.getVideoTracks()[0];
+
+    cameras.forEach(camera => {
+      //거른 videoinput을 고를 수 있도록 cameraSelect에 넣어주기
+      const option = document.createElement("option");
+      option.value = camera.deviceId;
+      option.innerText = camera.label;
+
+      if(currentCamera.label == camera.label){
+        option.selected = true;
+      }
+
+      cameraSelect.appendChild(option);
+    });
+  } catch (error) {
+    console.log(e);
+  }
+}
+
+async function getMedia(deviceId){
+ // 모바일폰의 전면카메라 , 초기실행
+  const initialConstrains = {
+    audio: true,
+    video: {facingMode: "user"},
+ };
+
+ //deviceId가 필요할 때, 카메라를 선택할 때 
+ const cameraConstraints = {
+  audio: true,
+  video:{deviceId: {exact: deviceId}},
+ };
+
+  try {
+    //유저환경의 디바이스  getUserMedia
+    myStream = await navigator.mediaDevices.getUserMedia(
+      deviceId? cameraConstraints : initialConstrains
+    );
+    myFace.srcObject = myStream;
+    if(!deviceId){
+      await getCamera();
+    }
+  } catch (e){
+    console.log(e);
+  }
+}
+
+getMedia();
+
+function handleMuteClick(){
+  //비디오 
+  myStream.getAudioTracks().forEach(track => (track.enabled = !track.enabled));
+  if(!muted){
+    muteBtn.innerText = "Unmute";
+    muted = true;
+  }else{
+    muteBtn.innerText = "Mute";
+    muted = false;
+  }
+}
+
+function handleCameraClick(){
+  myStream.getVideoTracks().forEach(track => (track.enabled = !track.enabled));
+  if(cameraOff){
+    cameraBtn.innerText = "Turn Camera Off";
+    cameraOff = false;
+  }else{
+    cameraBtn.innerText = "Turn Camera On";
+    cameraOff = true;
+  }
+}
+
+async function handleCameraChange(){
+  await getMedia(cameraSelect.value);
+}
+
+muteBtn.addEventListener("click", handleMuteClick);
+cameraBtn.addEventListener("click", handleCameraClick);
+cameraSelect.addEventListener("input", handleCameraChange);
+//
+//
+//메시지
 function handleMessageSubmit(event ){
   event.preventDefault();
   const input = room.querySelector("#msg input");
